@@ -119,7 +119,7 @@ h1 span{text-indent:0}
 <select id="rule" aria-label="규칙"><option value="free">자유룰</option><option value="renju">렌주룰</option></select>
 <select id="lvl" aria-label="난이도"><option value="1">입문</option><option value="2">쉬움</option><option value="3" selected>보통</option><option value="4">어려움 (느림)</option></select>
 <select id="tcs" aria-label="시간"><option value="0:0">시간 무제한</option><option value="60:0">1분</option><option value="180:2">3분+2초</option><option value="300:0">5분</option><option value="600:0">10분</option></select>
-<button id="nw">새 게임</button><button id="un">무르기</button><button id="rs">기권</button><button id="ht">힌트</button><button id="ln" aria-pressed="false">배우기 꺼짐</button><button id="sd" aria-pressed="true">소리 켜짐</button><button id="cf" aria-pressed="true">확인 터치 켜짐</button><button id="inst">📲 앱 설치</button>
+<button id="nw">새 게임</button><button id="un">무르기</button><button id="rs">기권</button><button id="ht">힌트</button><button id="ln" aria-pressed="false">배우기 꺼짐</button><button id="sd" aria-pressed="true">소리 켜짐</button><button id="cf" aria-pressed="true">확인 터치 켜짐</button><button id="num" aria-pressed="false">수순 꺼짐</button><button id="th">테마 자동</button><button id="inst">📲 앱 설치</button>
 </div>
 </aside>
 </main>
@@ -400,7 +400,7 @@ const SAVE_KEY="omok-state-v1";
 const QT={"??":"😱 큰 실수예요! 꼭 막거나 이어야 할 자리를 놓쳤어요.","?":"😕 실수예요. 더 좋은 자리가 있었어요.","?!":"🤔 조금 아쉬운 수예요.","!":"👍 좋은 수예요!","!!":"✨ 멋진 수예요! 놓치기 쉬운 자리를 찾았어요."};
 const QC={"!!":"#26b5a8","!":"#5a8fd4","?!":"#e9b52c","?":"#e8793a","??":"#d93a3a"},FN={"6":"장목","4":"4-4","3":"3-3"},SN={1:"흑",2:"백"};
 const $=i=>document.getElementById(i),mode=$("mode"),lvl=$("lvl"),rule=$("rule"),tcs=$("tcs"),mt=$("mt"),bdE=$("bd"),RM=matchMedia("(prefers-reduced-motion:reduce)").matches;
-let H,vi,over,busy,res,learn=false,hint=null,pv=null,wl=null,tm,ft,tt,snd=true,AC=null,T={1:0,2:0},INC=0,clk=false,lastT=0,dg=null,gh=null,fx=null,conf=true;
+let H,vi,over,busy,res,learn=false,hint=null,pv=null,wl=null,tm,ft,tt,snd=true,AC=null,T={1:0,2:0},INC=0,clk=false,lastT=0,dg=null,gh=null,fx=null,conf=true,showNum=false,theme="auto";
 
 const turn=()=>(H.length-1)%2===0?1:2,idx=()=>vi==null?H.length-1:vi,myK=()=>mode.value==="w"?2:1,humanTurn=()=>mode.value==="2"||turn()===myK(),RL=()=>rule.value;
 const boardAt=i=>{const b=new Int8Array(N*N);for(let j=1;j<=i;j++)b[H[j].r*N+H[j].c]=H[j].k;return b;};
@@ -419,17 +419,26 @@ const badge=(x,y,t,col)=>`<g class="bgx"><circle cx="${x+11}" cy="${y-11}" r="9"
 
 function fmt(ms){if(ms<20000)return(Math.max(0,ms)/1000).toFixed(1);const s=Math.ceil(ms/1000);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
 
+function applyTheme(t){
+  theme=["auto","light","dark"].includes(t)?t:"auto";
+  if(theme==="auto"){if(document.documentElement.removeAttribute)document.documentElement.removeAttribute("data-theme");}
+  else document.documentElement.setAttribute("data-theme",theme);
+  $("th").textContent=theme==="light"?"테마 라이트":theme==="dark"?"테마 다크":"테마 자동";
+}
+
 function syncToggles(){
   $("ln").textContent="배우기 "+(learn?"켜짐":"꺼짐");$("ln").setAttribute("aria-pressed",learn);
   $("sd").textContent="소리 "+(snd?"켜짐":"꺼짐");$("sd").setAttribute("aria-pressed",snd);
   $("cf").textContent="확인 터치 "+(conf?"켜짐":"꺼짐");$("cf").setAttribute("aria-pressed",conf);
+  $("num").textContent="수순 "+(showNum?"켜짐":"꺼짐");$("num").setAttribute("aria-pressed",showNum);
+  applyTheme(theme);
 }
 
 function saveState(){
   try{
     localStorage.setItem(SAVE_KEY,JSON.stringify({
       v:1,mode:mode.value,rule:rule.value,lvl:lvl.value,tcs:tcs.value,
-      learn,snd,conf,H,T,INC,clk,over,res,wl
+      learn,snd,conf,showNum,theme,H,T,INC,clk,over,res,wl
     }));
   }catch(e){}
 }
@@ -444,7 +453,7 @@ function loadState(){
     if(["free","renju"].includes(s.rule))rule.value=s.rule;
     if(["1","2","3","4"].includes(String(s.lvl)))lvl.value=String(s.lvl);
     if(["0:0","60:0","180:2","300:0","600:0"].includes(s.tcs))tcs.value=s.tcs;
-    learn=!!s.learn;snd=s.snd!==false;conf=s.conf!==false;
+    learn=!!s.learn;snd=s.snd!==false;conf=s.conf!==false;showNum=!!s.showNum;if(s.theme)theme=s.theme;
     syncToggles();
     if(s.H.length<2)return false;
     for(let j=1;j<s.H.length;j++){
@@ -476,11 +485,17 @@ function renderBoard(){
   if(live&&!over&&RL()==="renju"&&turn()===1&&humanTurn()){
     for(let r=0;r<N;r++)for(let c=0;c<N;c++)if(!b[r*N+c]&&forb(b,r,c))h+=`<path d="M${X(c)-6} ${Y(r)-6}l12 12m0-12l-12 12" stroke="#d93a3a" stroke-width="2.6" stroke-linecap="round" fill="none"/>`;
   }
+  const ord=showNum?new Int16Array(N*N):null;
+  if(ord)for(let j=1;j<=i;j++)ord[H[j].r*N+H[j].c]=j;
   for(let r=0;r<N;r++)for(let c=0;c<N;c++){
     const k=b[r*N+c];
-    if(k)h+=`<g class="${fx&&fx.r===r&&fx.c===c&&!RM?"dr":""}">${stone(k,X(c),Y(r))}</g>`;
+    if(k){
+      const n=ord?ord[r*N+c]:0;
+      const nt=n?`<text x="${X(c)}" y="${Y(r)+.5}" text-anchor="middle" dominant-baseline="central" font-size="${n>=100?8.5:10}" font-weight="700" font-family="system-ui,sans-serif" fill="${k===1?(n===i?"#f4c430":"#fff"):(n===i?"#d93a3a":"#222")}">${n}</text>`:"";
+      h+=`<g class="${fx&&fx.r===r&&fx.c===c&&!RM?"dr":""}">${stone(k,X(c),Y(r))}${nt}</g>`;
+    }
   }
-  if(i>0)h+=`<circle cx="${X(e.c)}" cy="${Y(e.r)}" r="4.2" fill="#e5483b" stroke="#fff" stroke-width="1"/>`;
+  if(i>0&&!showNum)h+=`<circle cx="${X(e.c)}" cy="${Y(e.r)}" r="4.2" fill="#e5483b" stroke="#fff" stroke-width="1"/>`;
   if(end&&wl&&over)for(const[r,c]of wl)h+=ring(r,c,16,"#e5483b",3);
   if(live&&hint)h+=ring(hint.r,hint.c,16,"#2e9e4f",4);
   if(live&&pv&&!b[pv.r*N+pv.c])h+=stone(turn(),X(pv.c),Y(pv.r),.55)+ring(pv.r,pv.c,16,"#3b78c4",2.5);
@@ -627,6 +642,8 @@ $("ln").onclick=()=>{learn=!learn;syncToggles();saveState();tip(learn?"배우기
 $("ht").onclick=()=>{if(over||busy||!humanTurn()||vi!=null)return;const m=aiPick(boardAt(H.length-1),turn(),RL(),3);if(!m)return;hint=m;pv=null;sfx("hint");tip("💡 추천: "+cn(m.r,m.c)+" 자리에 놓아 보세요");renderBoard();};
 $("sd").onclick=()=>{snd=!snd;syncToggles();saveState();if(snd)sfx("move");};
 $("cf").onclick=()=>{conf=!conf;pv=null;syncToggles();saveState();renderBoard();};
+$("num").onclick=()=>{showNum=!showNum;syncToggles();saveState();renderBoard();};
+$("th").onclick=()=>{const o=["auto","light","dark"];applyTheme(o[(o.indexOf(theme)+1)%3]);saveState();};
 function hm(h){document.documentElement.classList.toggle("hm",h);mt.textContent=h?"메뉴 보기":"메뉴 숨기기";mt.setAttribute("aria-expanded",!h);try{localStorage.setItem("omok-hm",h?"1":"0");}catch(e){}}
 mt.onclick=()=>hm(!document.documentElement.classList.contains("hm"));
 try{if(localStorage.getItem("omok-hm")==="1")hm(true);}catch(e){}
